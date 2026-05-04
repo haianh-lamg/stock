@@ -1,11 +1,20 @@
+
 (function(){
     // --- KHỞI TẠO HỆ THỐNG BIẾN BẢO MẬT ---
-    let cash=100000000, turn=1, selected='TECH', chart, labels=["P1"], inventory={}, itemMarkets={}, currentShopItems=[], timeLeft=120, shopOpenedInThisTurn=!1, preResults={};
+    let cash=100000000, turn=1, selected='TECH', chart, labels=["P1"], inventory={}, itemMarkets={}, currentShopItems=[], timeLeft=300, shopOpenedInThisTurn=!1, preResults={};
     let hasVisitedShop = false; // Biến kiểm tra điều kiện vào chợ
     let investigatedPrices = [];
-    
-
-    const TOTAL_TIME=120;
+    let fishTurns = 0, isFishingActive = false, currentTab = 'fish';
+    let eventQuests = {
+    daily: [
+        { id: 'd1', n: "Nhà giao dịch", d: "Thực hiện 1 lệnh mua/bán", r: 1, done: false },
+        { id: 'd2', n: "Kẻ săn tin", d: "Thuê thám tử điều tra", r: 2, done: false }
+    ],
+    special: [
+        { id: 's1', n: "Câu thủ đại gia", d: "Sở hữu trên 500tr tổng tài sản", r: 10, done: false }
+    ]
+    };
+    const TOTAL_TIME=300;
     const market={
         'TECH':{p:100000,startP:100000,h:[100000],o:0,name:'Công nghệ AI'},
         'BANK':{p:50000,startP:50000,h:[50000],o:0,name:'Ngân hàng TMCP'},
@@ -23,18 +32,15 @@
         {n:"Chiến tranh chip",t:"TECH",m:0.6,d:"Giá công nghệ giảm sâu!"},
         {n:"Lạm phát thực phẩm",t:"FOOD",m:1.4,d:"Thực phẩm tăng giá!"}
     ];
-
     const notify=(m,t='info')=>{
-        const c=document.getElementById('notify-box')||Object.assign(document.createElement('div'),{id:'notify-box',style:'position:fixed;top:20px;right:20px;z-index:10000'});
+        const c=document.getElementById('notify-box')||Object.assign(document.createElement('div'),{id:'notify-box',style:'position:fixed;top:20px;right:20px;z-index:100000'});
         document.body.appendChild(c);
         const s=document.createElement('div');
         s.style=`background:${t==='err'?'#ef4444':'#10b981'};color:#fff;padding:12px;margin-bottom:8px;border-radius:8px;box-shadow:0 4px 6px -1px rgba(0,0,0,0.1);font-weight:bold;`;
-        s.innerText=m; c.appendChild(s);
+        s.innerHTML=m; c.appendChild(s);
         setTimeout(()=>{s.style.opacity='0';setTimeout(()=>s.remove(),500)},3000);
     };
-
     const getWinRate=s=>Math.max(0.1,Math.min(0.9,0.5-((s.p-s.startP)/s.startP)));
-    
     const preCalc=()=>{
         const keys = Object.keys(market);
         // Xáo trộn danh sách các mã để chọn ngẫu nhiên vị trí đúng/sai
@@ -58,7 +64,6 @@
             };
         });
     };
-
     const randomizeShop=()=>{
         currentShopItems=[]; 
         for(let c in shopData){
@@ -69,39 +74,81 @@
             });
         }
     };
+    const processMarket = (silent = !1) => {
+    // 1. Cập nhật giá theo dự báo preResults (Logic cũ)
+    for (let k in market) {
+        let s = market[k], res = preResults[k];
+        s.p = Math.round(s.p * (res ? res.c : (1 + (Math.random() * 0.2 - 0.1))));
+        if (s.p < 100) s.p = 100;
+        
+        // Lưu lịch sử giá
+        s.h.push(s.p);
+        if (s.h.length > 15) s.h.shift();
+    }
 
-    const processMarket=(silent=!1)=>{
-        for(let k in market){
-            let s=market[k],res=preResults[k];
-            s.p=Math.round(s.p*(res?res.c:(1+(Math.random()*0.2-0.1))));
-            if(s.p<100)s.p=100; s.h.push(s.p); if(s.h.length>15)s.h.shift();
-        }
-        if(!silent&&Math.random()<0.04){
-            let e=events[Math.floor(Math.random()*events.length)];
-            market[e.t].p=Math.round(market[e.t].p*e.m); 
-            notify(`⚠️ ${e.n}: ${e.d}`);
-        }
-        turn++;
-        if (typeof SpecialEventSystem !== 'undefined') {
-        SpecialEventSystem.checkTrigger(turn);
-        if (SpecialEventSystem.getStatus().isEventActive) {
-            SpecialEventSystem.randomizeRarePrices(); // Cập nhật giá đồ hiếm mỗi lượt
+    // 2. Xử lý Sự kiện Biến động (Sửa lại logic thông báo ở đây)
+    if (!silent && Math.random() < 0.04) {
+        let e = events[Math.floor(Math.random() * events.length)];
+        let oldP = market[e.t].p;
+        market[e.t].p = Math.round(market[e.t].p * e.m);
+        
+        // Cập nhật lại điểm cuối cùng trong lịch sử sau khi nhân hệ số sự kiện
+        market[e.t].h[market[e.t].h.length - 1] = market[e.t].p;
+
+        let diff = market[e.t].p - oldP;
+        let sign = diff > 0 ? "TĂNG" : "GIẢM";
+        
+        // Thông báo chi tiết hơn để người dùng không thấy sai lệch
+        notify(`⚠️ ${e.n}: ${e.d} (${sign} mạnh về ${market[e.t].p.toLocaleString()}đ)`, diff > 0 ? 'info' : 'err');
+    }
+
+    turn++;
+
+    // 3. Logic Sự kiện Câu cá & Nhiệm vụ (Giữ nguyên phần bạn đã có)
+    const cycle = 20;
+    const startTurn = 5;
+    const duration = 10;
+    
+    if (turn >= startTurn) {
+        let progress = (turn - startTurn) % cycle;
+        if (progress < duration) {
+            if (!isFishingActive) {
+                isFishingActive = true;
+                notify("🎣 SỰ KIỆN: Câu cá thả ga đã bắt đầu!", "info");
+            }
+        } else {
+            if (isFishingActive) {
+                isFishingActive = false;
+                notify("🌙 Sự kiện câu cá đã kết thúc.", "err");
+                if(document.getElementById('event-modal')) 
+                    document.getElementById('event-modal').style.display = 'none';
+            }
         }
     }
-         labels.push("P"+turn); if(labels.length>15)labels.shift();
-        preCalc(); 
-        if(!silent){
-            timeLeft=TOTAL_TIME; 
-            shopOpenedInThisTurn=!1;
-            investigatedPrices = [];
-            hasVisitedShop = false; // Reset trạng thái khi sang lượt mới
-            const b=document.getElementById('btn-open-shop'); 
-            if(b){b.style.opacity="1"; b.innerText="🏪 Vào Khu Chợ (Mua)"}
-            randomizeShop(); updateDisplay(); saveGame();
-        }
+
+    // Reset nhiệm vụ mỗi lượt
+    eventQuests.daily.forEach(q => q.done = false);
+
+    labels.push("P" + turn);
+    if (labels.length > 15) labels.shift();
+    
+    // Tính toán dự báo cho lượt KẾ TIẾP
+    preCalc();
+
+    if (!silent) {
+        timeLeft = TOTAL_TIME;
+        shopOpenedInThisTurn = !1;
+        investigatedPrices = [];
+        hasVisitedShop = false;
+        const b = document.getElementById('btn-open-shop');
+        if (b) { b.style.opacity = "1"; b.innerText = "🏪 Vào Khu Chợ (Mua)" }
+        
+        randomizeShop();
+        updateDisplay(); // Gọi updateDisplay cuối cùng để đồng bộ tất cả
+        saveGame();
+    }
     };
-    // Tìm và thay thế hàm hireDetective của bạn bằng bản này:
-window.hireDetective = () => {
+    window.hireDetective = () => {
     const investigatedNames = investigatedPrices.map(item => item.n);
     const hiddenItems = currentShopItems.filter(name => !investigatedNames.includes(name));
 
@@ -111,6 +158,12 @@ window.hireDetective = () => {
 
     if (cash >= cost) {
         cash -= cost;
+        
+        // --- CHÈN Ở ĐÂY ---
+        // Mỗi khi thuê thám tử thành công, hệ thống sẽ kiểm tra nhiệm vụ d2
+        if (typeof triggerQuest === 'function') triggerQuest('d2');
+        // ------------------
+
         const targetName = hiddenItems[Math.floor(Math.random() * hiddenItems.length)];
         const targetPrice = itemMarkets[targetName];
 
@@ -120,7 +173,6 @@ window.hireDetective = () => {
             if (found) { basePrice = found.p; break; }
         }
 
-        // Tính toán và ép kiểu về String để hiển thị
         const diffPercent = basePrice > 0 ? ((targetPrice - basePrice) / basePrice * 100).toFixed(1) : "0.0";
         
         let comment = "";
@@ -131,12 +183,11 @@ window.hireDetective = () => {
         else if (pctNum >= -8) comment = "Thị trường ép giá, bán là lỗ.";
         else comment = "Thảm họa! Tuyệt đối đừng đụng vào.";
 
-        // ĐẨY DỮ LIỆU VÀO MẢNG - Chú ý tên các key
         investigatedPrices.push({ 
             n: targetName, 
             p: targetPrice, 
-            pct: diffPercent, // Đảm bảo key này tồn tại
-            nx: comment      // Đảm bảo key này tồn tại
+            pct: diffPercent,
+            nx: comment      
         });
 
         notify(`🕵️ Đã có tin về [${targetName}]: ${diffPercent}%`);
@@ -146,8 +197,7 @@ window.hireDetective = () => {
     } else {
         notify("Không đủ tiền thuê thám tử!", "err");
     }
-};
-
+    };
     const updateDisplay=()=>{
         let sv=Object.values(market).reduce((a,s)=>a+(s.p*(s.o||0)),0);
         document.getElementById('cash').innerText=Math.floor(cash).toLocaleString()+" đ";
@@ -201,17 +251,34 @@ window.hireDetective = () => {
     }
         
     };
+    window.handleTrade = (t) => {
+    let q = Math.abs(parseInt(document.getElementById('trade-qty').value)) || 0,
+        s = market[selected];
 
-    window.handleTrade=(t)=>{
-        let q=Math.abs(parseInt(document.getElementById('trade-qty').value))||0, s=market[selected];
-        if(t==='BUY'&&s.p*q<=cash){
-            cash-=s.p*q; s.o=(s.o||0)+q; 
-            notify(`Đã mua ${q} ${selected}`);
-        } else if(t==='SELL'&&(s.o||0)>=q){
-            cash+=s.p*q; s.o-=q; 
-            notify(`Đã bán ${q} ${selected}`);
-        } else notify("Không đủ nguồn lực!","err");
-        updateDisplay(); saveGame();
+    if (t === 'BUY' && s.p * q <= cash) {
+        cash -= s.p * q;
+        s.o = (s.o || 0) + q;
+        notify(`Đã mua ${q} ${selected}`);
+        
+        // --- CHÈN Ở ĐÂY ---
+        if (typeof triggerQuest === 'function') triggerQuest('d1'); 
+        // ------------------
+
+    } else if (t === 'SELL' && (s.o || 0) >= q) {
+        cash += s.p * q;
+        s.o -= q;
+        notify(`Đã bán ${q} ${selected}`);
+        
+        // --- CHÈN Ở ĐÂY ---
+        if (typeof triggerQuest === 'function') triggerQuest('d1');
+        // ------------------
+
+    } else {
+        notify("Không đủ nguồn lực!", "err");
+    }
+
+    updateDisplay();
+    saveGame();
     };
     window.buyMax = (n, p) => {
     let maxQty = Math.floor(cash / p);
@@ -230,8 +297,7 @@ window.hireDetective = () => {
     } else {
         notify("Bạn không đủ tiền mua món này!", "err");
     }
-};
-
+    };
     window.buyItem = (n, p, id) => {
     let q = Math.abs(parseInt(document.getElementById(id).value)) || 0;
     if (q > 0 && cash >= p * q) {
@@ -246,27 +312,47 @@ window.hireDetective = () => {
     } else {
         notify("Thất bại! Tiền không đủ hoặc số lượng sai.", "err");
     }
-};
-
-    window.sellItem=(n,p)=>{
-        let o=inventory[n]||0; 
-        if(o>0){
-            cash+=p*o; inventory[n]=0;
-            updateInv(); renderSell(); updateDisplay(); saveGame();
-            notify(`Đã thanh lý ${n}`);
-        }
     };
-
-    const updateInv=()=>{
-        const i=Object.entries(inventory).filter(e=>e[1]>0);
-        document.getElementById('inventory-list').innerHTML=i.length?i.map(e=>`<span class="inv-tag" style="background:#ddd;padding:2px 6px;margin:2px;border-radius:4px;display:inline-block">${e[0]} x${e[1]}</span>`).join(""): "Trống";
+    window.sellItem = (n, p) => {
+    // n ở đây là chuỗi chứa code HTML như "<span style='color...'>...</span>"
+    let o = inventory[n] || 0; 
+    if (o > 0) {
+        cash += p * o; 
+        inventory[n] = 0; 
+        
+        updateInv(); 
+        // Phải render lại bảng bán sau khi xóa vật phẩm
+        if (document.getElementById('sell-modal').style.display === 'flex') renderSell(); 
+        updateDisplay(); 
+        saveGame();
+        
+        notify(`Đã thanh lý: ${n}`); 
+    } else {
+        notify("Bạn không có vật phẩm này để bán!", "err");
+    }
     };
+    const updateInv = () => {
+    const i = Object.entries(inventory).filter(e => e[1] > 0);
+    const container = document.getElementById('inventory-list');
+    if(!container) return;
 
+    container.innerHTML = i.length ? i.map(e => {
+        const name = e[0];
+        const count = e[1];
+        
+        // Kiểm tra xem tên có chứa mã HTML màu (từ hàm goFishing) hay không
+        // Nếu là vật phẩm thường (không có tag màu), set nền xám, nếu có màu thì để tự nhiên
+        let bgStyle = name.includes('color:') ? 'background: rgba(0,0,0,0.05);' : 'background:#ddd;';
+        
+        return `<span class="inv-tag" style="${bgStyle} padding:2px 6px; margin:2px; border-radius:4px; display:inline-block; border:1px solid #ccc; font-size:12px;">
+            ${name} x${count}
+        </span>`;
+    }).join("") : "Trống";
+    };
     window.toggleNews=(s)=>{
         document.getElementById('news-modal').style.display=s?'flex':'none';
         if(s) renderNews();
     };
-
     const renderNews = () => {
     // --- Phần Tin Quy Hoạch (Stock) giữ nguyên ---
     let h = '<h4 style="color:#b45309; border-bottom:1px solid #fed7aa; padding-bottom:5px">📰 Tin Quy Hoạch</h4>';
@@ -305,8 +391,98 @@ window.hireDetective = () => {
     h += '</div>';
 
     document.getElementById('news-list-container').innerHTML = h;
-};
+    };
+    window.toggleEventModal = (s) => {
+    const m = document.getElementById('event-modal');
+    if(s) {
+        if(!isFishingActive) return notify("Sự kiện chưa diễn ra!", "err");
+        m.style.display = 'flex'; renderEventTab(currentTab);
+    } else m.style.display = 'none';
+    };
+    window.renderEventTab = (t) => {
+    currentTab = t;
+    const con = document.getElementById('event-content');
+    document.getElementById('fish-turn-count').innerText = fishTurns;
+    if(t === 'fish') {
+        con.innerHTML = `<div style="text-align:center;padding:20px;"><div style="font-size:50px">🌊</div>
+            <button onclick="goFishing()" style="width:100%;padding:15px;background:#3b82f6;color:#fff;border:none;border-radius:10px;font-weight:bold;cursor:pointer;">QUĂNG CẦU!</button>
+            <button onclick="buyFishTurn()" style="margin-top:15px;background:none;border:none;color:#3b82f6;text-decoration:underline;cursor:pointer;">Mua lượt (2m)</button></div>`;
+    } else {
+        let h = '<h4 style="margin-top:0">Nhiệm vụ hàng ngày</h4>';
+        [...eventQuests.daily, ...eventQuests.special].forEach(q => {
+            h += `<div style="display:flex;justify-content:space-between;padding:10px;background:#f8fafc;border-radius:8px;margin-bottom:8px;font-size:13px;">
+                <span><b>${q.n}</b><br>${q.d}</span>
+                <button ${q.done?'disabled':''} onclick="claimQuest('${q.id}')" style="background:${q.done?'#94a3b8':'#10b981'};color:#fff;border:none;padding:5px;border-radius:4px;">+${q.r} Lượt</button></div>`;
+        });
+        con.innerHTML = h;
+    }
+    };
+    window.goFishing = () => {
+    if (fishTurns <= 0) return notify("Hết lượt câu!", "err");
+    fishTurns--;
 
+    // Danh sách cá: Giữ nguyên cấu trúc chứa HTML để đồng bộ với hệ thống Inventory hiện tại của bạn
+    const rands = [
+        { n: "<span style='color:#94a3b8'>(Event)</span> Cá con", p: 300000, w: 0.8 },
+        { n: "<span style='color:#3b82f6'>(Event)</span> Cá ngừ", p: 1000000, w: 0.15 },
+        { n: "<span style='color:#f59e0b'>(Event)</span> Rương bạc", p: 5000000, w: 0.04 },
+        { n: "<span style='color:#ef4444'>(Event)</span> Xích Viêm Long Ngư", p: 50000000, w: 0.001 },
+        { n: "<span style='color:#a855f7'>(Event)</span> Huyền Linh Nguyệt Ngư", p: 5200000, w: 0.001 },
+        { n: "<span style='color:#06b6d4'>(Event)</span> Hàn Băng Phách Ngư", p: 4900000, w: 0.001 },
+        { n: "<span style='color:#1e40af'>(Event)</span> Vô Tận Hải Nhãn Ngư", p: 5000000, w: 0.001 },
+        { n: "<span style='color:#eab308'>(Event)</span> Thiên Đạo Kim Lân Ngư", p: 4800000, w: 0.001 }
+    ];
+
+    let r = Math.random(), cur = 0, win;
+    for (let i of rands) {
+        cur += i.w;
+        if (r <= cur) {
+            win = i;
+            break;
+        }
+    }
+
+    // Nếu không may r rơi vào khoảng còn lại (do làm tròn số w), chọn con cá đầu tiên
+    if (!win) win = rands[0];
+
+    // 1. Tăng số lượng trong kho (Dùng chính chuỗi có HTML làm Key)
+    inventory[win.n] = (inventory[win.n] || 0) + 1;
+
+    // 2. CẬP NHẬT GIÁ VÀO THỊ TRƯỜNG (Bắt buộc phải có để hiện nút Bán)
+    // Chúng ta gán trực tiếp giá cố định của con cá vào itemMarkets
+    itemMarkets[win.n] = win.p;
+
+    // 3. Thông báo (Dùng innerHTML trong notify đã sửa ở bước trước)
+    notify(`🎣 Bạn đã câu được: ${win.n}`, "info");
+
+    // 4. Cập nhật giao diện và lưu game
+    updateInv();
+    renderEventTab('fish');
+    updateDisplay();
+    saveGame();
+    };
+    window.buyFishTurn = () => {
+    if(cash >= 2000000){ cash -= 2000000; fishTurns++; renderEventTab('fish'); updateDisplay(); }
+    else notify("Không đủ tiền!", "err");
+    };
+    window.claimQuest = (id) => {
+    let q = [...eventQuests.daily, ...eventQuests.special].find(x => x.id === id);
+    if (!q || q.done) return;
+
+    if (id === 's1') {
+        let stockVal = Object.values(market).reduce((a, s) => a + (s.p * (s.o || 0)), 0);
+        // Tính thêm giá trị hàng hóa trong kho dựa trên giá shop hiện tại (nếu muốn)
+        if ((cash + stockVal) >= 500000000) {
+            q.done = true; fishTurns += q.r; notify("Đã nhận thưởng!"); renderEventTab('quest');
+        } else {
+            notify("Tổng tài sản chưa đủ 500tr!", "err");
+        }
+    }
+    };
+    window.triggerQuest = (id) => {
+    let q = eventQuests.daily.find(x => x.id === id);
+    if(q && !q.done) { q.done = true; fishTurns += q.r; notify(`✅ Xong nhiệm vụ: +${q.r} lượt câu!`); }
+    };
     window.toggleShop=(s)=>{
         if(s && shopOpenedInThisTurn) return notify("Phiên chợ đã kết thúc!","err");
         
@@ -322,7 +498,6 @@ window.hireDetective = () => {
             if(b){b.style.opacity = "0.5"; b.innerText = "Chợ đã đóng cửa"}
         }
     };
-
     const renderShop = () => {
     let h = ''; 
     for (let c in shopData) {
@@ -352,38 +527,59 @@ window.hireDetective = () => {
         });
     }
     document.getElementById('shop-sections-container').innerHTML = h || "Chợ hôm nay vắng vẻ...";
-};
-
-    window.toggleSellModal=(s)=>{
-        if(s && !hasVisitedShop) {
-            return notify("Bạn cần vào Khu Chợ khảo sát giá trước khi Ký gửi!", "err");
-        }
-        document.getElementById('sell-modal').style.display=s?'flex':'none';
-        if(s) renderSell();
     };
-
-    const renderSell = () => {
-    // Lấy tất cả tên món đồ có trong kho HOẶC có trong danh sách chợ hôm nay
-    const allPossibleItems = Array.from(new Set([...Object.keys(inventory), ...currentShopItems]));
+    window.toggleSellModal = (s) => {
+    const hasFish = Object.keys(inventory).some(key => key.includes("(Event)") && inventory[key] > 0);
     
-    document.getElementById('sell-list-container').innerHTML = allPossibleItems.map(n => {
-        let p = itemMarkets[n] || 0; // Giá thu mua (bằng 0 nếu hôm nay chợ không thu)
-        let o = inventory[n] || 0;
-        if (o <= 0) return ''; // Không có hàng thì không hiện
+    // Nếu mở (s=true) và chưa vào chợ VÀ cũng không có cá trong người thì mới chặn
+    if(s && !hasVisitedShop && !hasFish) {
+        return notify("Bạn cần vào Khu Chợ khảo sát giá hoặc câu được cá mới có thể Ký gửi!", "err");
+    }
+    
+    document.getElementById('sell-modal').style.display = s ? 'flex' : 'none';
+    if(s) renderSell();
+    };
+    const renderSell = () => {
+    const itemsInInv = Object.entries(inventory).filter(e => e[1] > 0);
+    const container = document.getElementById('sell-list-container');
+    if(!container) return;
+
+    container.innerHTML = itemsInInv.map(([name, count]) => {
+        let price = itemMarkets[name] || 0; 
+        
+        // Tạo một ID an toàn bằng cách loại bỏ các ký tự đặc biệt
+        // Hoặc đơn giản là dùng Base64 để mã hóa tên nếu nó quá phức tạp
+        const safeId = btoa(unescape(encodeURIComponent(name))).replace(/=/g, "");
 
         return `
-            <div style="display:flex;justify-content:space-between;margin-bottom:10px;padding:8px;border-bottom:1px solid #eee">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; padding:10px; border-bottom:1px solid #eee; background:#fff;">
                 <span>
-                    <b>${n}</b> (Số lượng: ${o})<br>
-                    <small style="color:${p > 0 ? '#10b981' : '#ef4444'}">
-                        ${p > 0 ? `Giá ký gửi: ${p.toLocaleString()}đ` : 'Hôm nay chợ không thu mua'}
+                    <b style="font-size:14px;">${name}</b> <br> 
+                    <small style="color:#666">Số lượng: <b>${count}</b></small><br>
+                    <small style="color:${price > 0 ? '#10b981' : '#ef4444'}">
+                        ${price > 0 ? `Giá thu mua: ${price.toLocaleString()}đ` : 'Chưa có giá thị trường'}
                     </small>
                 </span>
-                ${(o > 0 && p > 0) ? `<button onclick="sellItem('${n}',${p})" style="background:#10b981;color:white;border:none;padding:5px 10px;border-radius:4px;cursor:pointer">Bán tất</button>` : ''}
+                ${(price > 0) ? `
+                    <button id="btn-${safeId}" 
+                            style="background:#10b981; color:white; border:none; padding:8px 12px; border-radius:6px; cursor:pointer; font-weight:bold;">
+                        Bán tất
+                    </button>` : ''}
             </div>`;
-    }).join('') || "Bạn không có hàng hóa nào trong kho.";
-};
+    }).join('') || "<div style='text-align:center; color:#999; padding:20px;'>Kho đồ của bạn đang trống.</div>";
 
+    // Gán sự kiện Click trực tiếp bằng JavaScript thay vì viết trong HTML onclick
+    itemsInInv.forEach(([name, count]) => {
+        const price = itemMarkets[name] || 0;
+        if(price > 0) {
+            const safeId = btoa(unescape(encodeURIComponent(name))).replace(/=/g, "");
+            const btn = document.getElementById(`btn-${safeId}`);
+            if(btn) {
+                btn.onclick = () => window.sellItem(name, price);
+            }
+        }
+    });
+    };
     const saveGame = () => {
     localStorage.setItem('trade_save_pro', JSON.stringify({
         cash,
@@ -393,13 +589,13 @@ window.hireDetective = () => {
         itemMarkets,
         inventory,
         market,
+        fishTurns,
         labels,
         preResults, // PHẢI THÊM CÁI NÀY: Để chốt dự đoán không đổi khi F5
         hasVisitedShop, // NÊN THÊM CÁI NÀY: Để giữ trạng thái đã vào chợ hay chưa
         last: Date.now()
     }));
-};
-    
+    };
     const loadGame=()=>{
         let d=localStorage.getItem('trade_save_pro'); 
         if(!d) return false;
@@ -415,7 +611,6 @@ window.hireDetective = () => {
             return true;
         } catch(e) { return false; }
     };
-
     const init = () => {
     const hasSave = loadGame();
     
@@ -423,8 +618,6 @@ window.hireDetective = () => {
         preCalc(); 
         randomizeShop();
     } else {
-        // Kiểm tra xem dữ liệu nạp lên đã có logic "3 đúng - 2 sai" chưa
-        // Nếu chưa có hoặc là lần đầu, mới chạy preCalc
         const keys = Object.keys(market);
         if (Object.keys(preResults).length === 0 || preResults[keys[0]].isPredictionTrue === undefined) {
             preCalc();
@@ -432,7 +625,39 @@ window.hireDetective = () => {
         if (currentShopItems.length === 0) randomizeShop();
     }
 
-    // --- Giữ nguyên phần khởi tạo Chart ---
+    // --- [MỚI] KHỞI TẠO GIAO DIỆN SỰ KIỆN ---
+    // Tạo nút mở sự kiện nổi trên màn hình
+    const btn = document.createElement('button');
+    btn.id = 'btn-event-hub';
+    btn.innerHTML = "🎣 SỰ KIỆN ĐANG MỞ";
+    btn.style = "position:fixed;bottom:80px;right:20px;background:linear-gradient(135deg,#f59e0b,#d97706);color:white;border:none;padding:12px 20px;border-radius:50px;font-weight:bold;cursor:pointer;display:none;box-shadow:0 4px 15px rgba(0,0,0,0.3);z-index:9999;border:2px solid #fff";
+    btn.onclick = () => toggleEventModal(true);
+    document.body.appendChild(btn);
+
+    // Tạo cấu trúc Modal cho Sự kiện
+    const modal = document.createElement('div');
+    modal.id = 'event-modal';
+    modal.style = "display:none;position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:20000;align-items:center;justify-content:center;padding:20px;backdrop-filter:blur(5px);";
+    modal.innerHTML = `
+        <div style="background:#fff;width:100%;max-width:400px;border-radius:20px;overflow:hidden;font-family:sans-serif;box-shadow:0 25px 50px -12px rgba(0,0,0,0.5);">
+            <div style="background:#3b82f6;color:#fff;padding:20px;text-align:center;position:relative;">
+                <h3 style="margin:0;letter-spacing:1px;">TRUNG TÂM SỰ KIỆN</h3>
+                <button onclick="toggleEventModal(false)" style="position:absolute;right:15px;top:15px;background:none;border:none;color:#fff;font-size:28px;cursor:pointer;line-height:1;">&times;</button>
+            </div>
+            <div style="display:flex;background:#f1f5f9;padding:12px;text-align:center;font-size:14px;border-bottom:1px solid #e2e8f0;">
+                <div style="flex:1">Lượt câu hiện có: <b id="fish-turn-count" style="color:#3b82f6;font-size:16px;">0</b></div>
+            </div>
+            <div id="event-content" style="padding:20px;max-height:350px;overflow-y:auto;background:#fff;">
+                <!-- Nội dung tab sẽ hiện ở đây -->
+            </div>
+            <div style="display:flex;border-top:1px solid #e2e8f0;background:#f8fafc;">
+                <button onclick="renderEventTab('fish')" style="flex:1;padding:15px;border:none;background:none;cursor:pointer;font-weight:bold;color:#475569;">HỒ CÂU</button>
+                <button onclick="renderEventTab('quest')" style="flex:1;padding:15px;border:none;background:none;border-left:1px solid #e2e8f0;cursor:pointer;font-weight:bold;color:#475569;">NHIỆM VỤ</button>
+            </div>
+        </div>`;
+    document.body.appendChild(modal);
+    // ----------------------------------------
+
     const canvas = document.getElementById('proChart');
     if(canvas){
         const ctx=canvas.getContext('2d');
@@ -455,17 +680,24 @@ window.hireDetective = () => {
     updateInv(); 
     updateDisplay();
     
-    // --- Timer giữ nguyên ---
     setInterval(()=>{
         timeLeft--; 
         if(timeLeft<0) processMarket();
+        
+        // --- [MỚI] CẬP NHẬT HIỂN THỊ NÚT SỰ KIỆN ---
+        const eBtn = document.getElementById('btn-event-hub');
+        if(eBtn) {
+            eBtn.style.display = isFishingActive ? 'block' : 'none';
+        }
+        // -----------------------------------------
+
         const mins=Math.floor(timeLeft/60).toString().padStart(2,'0'), secs=(timeLeft%60).toString().padStart(2,'0');
         const countEl=document.getElementById('countdown');
         if(countEl) countEl.innerText=`${mins}:${secs}`;
         const barEl=document.getElementById('timer-bar');
         if(barEl) barEl.style.width=(timeLeft/TOTAL_TIME)*100+"%";
     },1000);
-};
-
+    };
     window.onload=init;
 })();
+1
