@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Đầu Cơ Đại Chiến - Realtime Market</title>
+    <link rel="stylesheet" href="style.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <div class="game-container">
+        <div class="header-status">
+            <div class="status-item">💵 Tiền: <span id="cash">0</span></div>
+            <div class="status-item">📈 Cổ phiếu: <span id="stock-val">0</span></div>
+            <div class="status-item">💰 Tổng: <span id="total">0</span></div>
+        </div>
+
+        <div class="main-layout">
+            <!-- Cột trái: Chứng khoán -->
+            <div class="stock-section">
+                <table class="market-table">
+                    <thead><tr><th>Mã</th><th>Giá</th><th>+/-</th><th>Sở hữu</th></tr></thead>
+                    <tbody id="market-table"></tbody>
+                </table>
+                <div class="chart-container"><canvas id="proChart"></canvas></div>
+                <div class="trade-controls">
+                    <b id="target-name">...</b>
+                    <input type="number" id="trade-qty" value="0" min="1">
+                    <div id="trade-estimate"></div>
+                    <button class="btn-buy" onclick="handleTrade('BUY')">Mua</button>
+                    <button class="btn-sell" onclick="handleTrade('SELL')">Bán</button>
+                </div>
+            </div>
+
+            <!-- Cột phải: Menu hành động -->
+            <div class="market-section">
+                <div class="inventory-box">
+                    <strong>Kho hàng:</strong> <div id="inventory-list">Trống</div>
+                </div>
+                
+                <!-- Bộ đếm ngược thời gian -->
+                <div class="timer-section">
+                    <div class="timer-label">⏱️ THỊ TRƯỜNG BIẾN ĐỘNG SAU</div>
+                    <div id="countdown" class="timer-display">02:00</div>
+                    <div class="timer-bar-container">
+                        <div id="timer-bar" class="timer-bar-fill"></div>
+                    </div>
+                </div>
+
+                <div class="action-menu">
+                    <button class="btn-action btn-news" onclick="toggleNews(true)">📰 Đọc Báo Lá Cải (Tin đồn)</button>
+                    <button id="btn-open-shop" class="btn-action btn-shop" onclick="toggleShop(true)">🏪 Vào Khu Chợ (Mua)</button>
+                    <button id="btn-sell-items" class="btn-action btn-sell-inv" onclick="toggleSellModal(true)">📦 Gian Hàng Ký Gửi (Bán)</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modals -->
+    <div id="news-modal" class="modal"><div class="modal-content">
+        <span class="close" onclick="toggleNews(false)">&times;</span>
+        <h2 style="color: #b45309;">📰 Tòa Soạn Lá Cải</h2>
+        <div id="news-list-container"></div>
+    </div></div>
+
+    <div id="shop-modal" class="modal"><div class="modal-content">
+        <span class="close" onclick="toggleShop(false)">&times;</span>
+        <h2>🏪 Khu Chợ Phiên</h2>
+        <div id="shop-sections-container"></div>
+    </div></div>
+
+    <div id="sell-modal" class="modal"><div class="modal-content">
+        <span class="close" onclick="toggleSellModal(false)">&times;</span>
+        <h2>📦 Gian Hàng Ký Gửi</h2>
+        <div id="sell-list-container"></div>
+    </div></div>
+
+    <script src="script.js"></script>
+</body>
+</html>

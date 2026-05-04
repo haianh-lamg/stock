@@ -1,0 +1,56 @@
+:root {
+    --up:#10b981; --down:#ef4444; --primary:#6366f1; --bg:#0f172a;
+    --surface:#fff; --surface-soft:#f8fafc; --text-main:#1e293b;
+    --text-muted:#64748b; --border:#e2e8f0;
+    --shadow:0 4px 6px -1px rgb(0 0 0/0.1), 0 2px 4px -2px rgb(0 0 0/0.1);
+}
+body { font-family:'Inter',system-ui,sans-serif; background:var(--bg); color:var(--text-main); margin:0; padding:20px; line-height:1.5; }
+.game-container { max-width:1100px; margin:0 auto; }
+.header-status { display:flex; justify-content:space-around; background:linear-gradient(135deg,#1e293b,#0f172a); color:#fff; padding:20px; border-radius:16px; margin-bottom:24px; border:1px solid #334155; box-shadow:var(--shadow); }
+.status-item { font-weight:600; display:flex; flex-direction:column; align-items:center; }
+.status-item span { color:#fbbf24; font-family:'JetBrains Mono',monospace; font-size:1.3rem; }
+.main-layout { display:grid; grid-template-columns:1.6fr 1fr; gap:24px; }
+.stock-section, .market-section { background:var(--surface); padding:24px; border-radius:16px; box-shadow:var(--shadow); border:1px solid var(--border); }
+.market-table { width:100%; border-collapse:separate; border-spacing:0; }
+.market-table th, .market-table td { padding:16px 12px; text-align:left; border-bottom:1px solid var(--border); vertical-align:middle; }
+.market-table th:first-child, .market-table td:first-child { width:25%; padding-left:20px; }
+.market-table tr:hover td { background:var(--surface-soft); cursor:pointer; }
+.market-table tr.active td { background:#eef2ff; border-bottom-color:var(--primary); }
+.chart-container { margin-top:20px; height:300px; background:var(--surface-soft); border-radius:12px; padding:10px; }
+.trade-controls { display:flex; align-items:center; gap:12px; margin-top:20px; padding:15px; background:var(--surface-soft); border-radius:12px; }
+input[type="number"] { padding:8px 12px; border:1px solid var(--border); border-radius:6px; outline:none; transition:0.2s; }
+input[type="number"]:focus { border-color:var(--primary); }
+button { transition:0.1s; cursor:pointer; font-weight:600; border:none; border-radius:8px; }
+button:active { transform:scale(0.95); }
+.btn-buy { background:var(--up); color:#fff; padding:10px 20px; }
+.btn-sell { background:var(--down); color:#fff; padding:10px 20px; }
+.action-menu { display:grid; gap:12px; margin:24px 0; }
+.btn-action { padding:14px; border-radius:10px; font-weight:700; display:flex; align-items:center; justify-content:center; gap:8px; color:#fff; box-shadow:0 4px 0 rgba(0,0,0,0.1); }
+.btn-news { background:#f59e0b; } .btn-shop { background:var(--primary); } .btn-sell-inv { background:#8b5cf6; }
+.timer-section { background:#1e293b; color:#fff; padding:20px; border-radius:12px; text-align:center; border:1px solid #334155; }
+.timer-label { font-size:0.75rem; color:#94a3b8; text-transform:uppercase; letter-spacing:0.1em; }
+.timer-display { font-size:2.5rem; color:#fbbf24; font-family:'JetBrains Mono',monospace; text-shadow:0 0 15px rgba(251,191,36,0.3); }
+.timer-bar-container { height:8px; background:#334155; border-radius:10px; margin-top:12px; overflow:hidden; }
+.timer-bar-fill { height:100%; background:linear-gradient(90deg,#3b82f6,#60a5fa); transition:1s linear; }
+.modal { display:none; position:fixed; z-index:1000; left:0; top:0; width:100%; height:100%; background:rgba(15,23,42,0.7); backdrop-filter:blur(5px); align-items:center; justify-content:center; }
+.modal-content { background:var(--surface); padding:30px; border-radius:20px; width:90%; max-width:500px; max-height:85vh; overflow-y:auto; position:relative; box-shadow:0 25px 50px -12px #00000080; animation:modalAppear 0.3s ease-out; }
+@keyframes modalAppear { from { opacity:0; transform:scale(0.9) translateY(20px); } to { opacity:1; transform:scale(1) translateY(0); } }
+.close { position:absolute; right:20px; top:15px; font-size:28px; color:var(--text-muted); cursor:pointer; }
+.close:hover { color:var(--down); }
+.up { color:var(--up); font-weight:700; } .down { color:var(--down); font-weight:700; }
+.news-item { background:var(--surface-soft); margin-bottom:8px; padding:12px; border-radius:8px; border-left:4px solid #f59e0b; }
+.inv-tag { background:#f1f5f9; border:1px solid var(--border); padding:4px 10px; border-radius:6px; font-size:0.85rem; font-weight:500; }
+#news-list-container {
+    max-height: 400px;
+    overflow-y: auto;
+    padding-right: 5px;
+}
+
+/* Tùy chỉnh thanh cuộn cho báo lá cải */
+#news-list-container::-webkit-scrollbar {
+    width: 4px;
+}
+#news-list-container::-webkit-scrollbar-thumb {
+    background: #f59e0b;
+    border-radius: 10px;
+}
